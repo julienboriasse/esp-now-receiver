@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
 #include <ArduinoJson.h>
 
   // Structure to receive ISS coordinates data
@@ -96,6 +97,11 @@ void initESPNow() {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
+  
+  // Force WiFi to channel 6 for ESP-NOW
+  esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+  
+  Serial.println("Channel forced to: 6");
   
   // Register the receive callback
   esp_now_register_recv_cb(onDataReceive);
