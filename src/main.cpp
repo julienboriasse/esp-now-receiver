@@ -2,33 +2,31 @@
 #include <WiFi.h>
 #include <esp_now.h>
 
-// Structure to receive data
+// Structure to receive ISS coordinates data
 typedef struct {
-  uint8_t id;
-  float temperature;
-  float humidity;
-  int rssi;
-} EspNowMessage;
+  float latitude;
+  float longitude;
+  uint32_t timestamp;
+} ISSCoordinates;
 
 // Global variable to store received data
-EspNowMessage receivedData;
+ISSCoordinates issData;
 volatile bool dataReceived = false;
 
 // Callback function that gets called when data is received
 void onDataReceive(const uint8_t *senderMac, const uint8_t *incomingData, int len) {
   // Copy the received data to our structure
-  memcpy(&receivedData, incomingData, sizeof(receivedData));
+  memcpy(&issData, incomingData, sizeof(issData));
   dataReceived = true;
   
-  // Print received data immediately
+  // Print received ISS data
   Serial.println("================================");
-  Serial.printf("Data received from MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+  Serial.printf("ISS Data received from MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
                 senderMac[0], senderMac[1], senderMac[2],
                 senderMac[3], senderMac[4], senderMac[5]);
-  Serial.printf("Message ID: %d\n", receivedData.id);
-  Serial.printf("Temperature: %.2f°C\n", receivedData.temperature);
-  Serial.printf("Humidity: %.2f%%\n", receivedData.humidity);
-  Serial.printf("RSSI: %d dBm\n", receivedData.rssi);
+  Serial.printf("Latitude:  %.6f°\n", issData.latitude);
+  Serial.printf("Longitude: %.6f°\n", issData.longitude);
+  Serial.printf("Timestamp: %lu\n", issData.timestamp);
   Serial.println("================================");
 }
 
