@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <ArduinoJson.h>
 
 // Structure to receive ISS coordinates data
 typedef struct {
@@ -9,25 +10,52 @@ typedef struct {
   uint32_t timestamp;
 } ISSCoordinates;
 
+// Buffer for JSON string (max 256 bytes)
+char jsonBuffer[256];
+
 // Global variable to store received data
 ISSCoordinates issData;
 volatile bool dataReceived = false;
 
 // Callback function that gets called when data is received
 void onDataReceive(const uint8_t *senderMac, const uint8_t *incomingData, int len) {
-  // Copy the received data to our structure
-  memcpy(&issData, incomingData, sizeof(issData));
-  dataReceived = true;
+  // Ensure we don't exceed buffer size
+  if (len >= sizeof(jsonBuffer)) {
+    Serial.println("Error: JSON payload too large!");
+    return;
+  }
+  
+  // Copy the received data to our buffer
+  memcpy(jsonBuffer, incomingData, len);
+  jsonBuffer[len] = '\0'; // Null-terminate the string
+  
+  // Parse JSON
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, jsonBuffer);
+  
+  if (error) {
+    Serial.print("JSON parse error: ");
+    Serial.println(error.f_str());
+    return;
+  }
+  
+  // Extract values from JSON
+  float latitude = doc["latitude"];
+  float longitude = doc["longitude"];
+  uint32_t timestamp = doc["timestamp"];
   
   // Print received ISS data
   Serial.println("================================");
   Serial.printf("ISS Data received from MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
                 senderMac[0], senderMac[1], senderMac[2],
                 senderMac[3], senderMac[4], senderMac[5]);
-  Serial.printf("Latitude:  %.6f°\n", issData.latitude);
-  Serial.printf("Longitude: %.6f°\n", issData.longitude);
-  Serial.printf("Timestamp: %lu\n", issData.timestamp);
+  Serial.printf("Raw JSON: %s\n", jsonBuffer);
+  Serial.printf("Latitude:  %.6f°\n", latitude);
+  Serial.printf("Longitude: %.6f°\n", longitude);
+  Serial.printf("Timestamp: %lu\n", timestamp);
   Serial.println("================================");
+  
+  dataReceived = true;
 }
 
 void initWiFi() {
