@@ -3,7 +3,7 @@
 #include <esp_now.h>
 #include <ArduinoJson.h>
 
-// Structure to receive ISS coordinates data
+  // Structure to receive ISS coordinates data
 typedef struct {
   float latitude;
   float longitude;
@@ -12,23 +12,37 @@ typedef struct {
 
 // Buffer for JSON string (max 256 bytes)
 char jsonBuffer[256];
+int jsonBufferLen = 0;
+
+// Buffer to store sender MAC address
+uint8_t senderMacBuffer[6];
 
 // Global variable to store received data
 ISSCoordinates issData;
 volatile bool dataReceived = false;
 
 // Callback function that gets called when data is received
+// Keep this minimal - just copy data and set flag
 void onDataReceive(const uint8_t *senderMac, const uint8_t *incomingData, int len) {
   // Ensure we don't exceed buffer size
   if (len >= sizeof(jsonBuffer)) {
-    Serial.println("Error: JSON payload too large!");
     return;
   }
   
   // Copy the received data to our buffer
   memcpy(jsonBuffer, incomingData, len);
+  jsonBufferLen = len;
   jsonBuffer[len] = '\0'; // Null-terminate the string
   
+  // Copy sender MAC address
+  memcpy(senderMacBuffer, senderMac, 6);
+  
+  // Set flag for main loop to process
+  dataReceived = true;
+}
+
+// Process received data (called from main loop, not interrupt)
+void processReceivedData() {
   // Parse JSON
   JsonDocument doc;
   DeserializationError error = deserializeJson(doc, jsonBuffer);
@@ -44,18 +58,23 @@ void onDataReceive(const uint8_t *senderMac, const uint8_t *incomingData, int le
   float longitude = doc["longitude"];
   uint32_t timestamp = doc["timestamp"];
   
-  // Print received ISS data
-  Serial.println("================================");
-  Serial.printf("ISS Data received from MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                senderMac[0], senderMac[1], senderMac[2],
-                senderMac[3], senderMac[4], senderMac[5]);
-  Serial.printf("Raw JSON: %s\n", jsonBuffer);
-  Serial.printf("Latitude:  %.6f°\n", latitude);
-  Serial.printf("Longitude: %.6f°\n", longitude);
-  Serial.printf("Timestamp: %lu\n", timestamp);
-  Serial.println("================================");
+  // Build complete output string in a buffer before sending to Serial
+  // This prevents incomplete prints that can occur with multiple Serial calls
+  char outputBuffer[512];
+  int pos = 0;
   
-  dataReceived = true;
+  pos += sprintf(outputBuffer + pos, "================================\n");
+  pos += sprintf(outputBuffer + pos, "ISS Data received from MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                 senderMacBuffer[0], senderMacBuffer[1], senderMacBuffer[2],
+                 senderMacBuffer[3], senderMacBuffer[4], senderMacBuffer[5]);
+  pos += sprintf(outputBuffer + pos, "Raw JSON: %s\n", jsonBuffer);
+  pos += sprintf(outputBuffer + pos, "Latitude:  %.6f°\n", latitude);
+  pos += sprintf(outputBuffer + pos, "Longitude: %.6f°\n", longitude);
+  pos += sprintf(outputBuffer + pos, "Timestamp: %lu\n", timestamp);
+  pos += sprintf(outputBuffer + pos, "================================\n");
+  
+  // Send complete output in one atomic operation
+  Serial.print(outputBuffer);
 }
 
 void initWiFi() {
@@ -114,7 +133,11 @@ void setup() {
 }
 
 void loop() {
-  // The ESP-NOW callback will handle data reception
-  // This loop just keeps the device alive
-  delay(1000);
+  // Check if data was received
+  if (dataReceived) {
+    dataReceived = false; // Clear flag
+    processReceivedData(); // Process in main loop, not in interrupt
+  }
+  
+  delay(10);
 }
